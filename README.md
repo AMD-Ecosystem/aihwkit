@@ -1,9 +1,17 @@
 # IBM Analog Hardware Acceleration Kit
 
 ![PyPI](https://img.shields.io/pypi/v/aihwkit)
+[![test-and-lint](https://github.com/IBM/aihwkit/actions/workflows/test-and-lint.yml/badge.svg?branch=master)](https://github.com/IBM/aihwkit/actions/workflows/test-and-lint.yml)
 [![Documentation Status](https://readthedocs.org/projects/aihwkit/badge/?version=latest)](https://aihwkit.readthedocs.io/en/latest/?badge=latest)
 ![PyPI - License](https://img.shields.io/pypi/l/aihwkit)
 [![arXiv](https://img.shields.io/badge/arXiv-2104.02184-green.svg)](https://arxiv.org/abs/2104.02184)
+
+## Looking for fast hardware-aware training?
+
+Try [**AIHWKit-Lightning**](https://github.com/IBM/aihwkit-lightning): a fast
+and scalable toolkit for hardware-aware training of large neural networks on
+Analog In-Memory Computing (AIMC) hardware. It is the go-to option when
+training speed and scale are what you need.
 
 ## Description
 

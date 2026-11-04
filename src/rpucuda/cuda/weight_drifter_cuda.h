@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -30,6 +30,8 @@ public:
 
   void saturate(T *weights, param_t *dev_4params);
   const T *getNu() const { return dev_nu_ == nullptr ? nullptr : dev_nu_->getDataConst(); };
+  // copies nu from the host drifter without resetting the drift state
+  void setNuFrom(const WeightDrifter<T> &wd, int x_size, int d_size);
 
   void dumpExtra(RPU::state_t &extra, const std::string prefix);
   void loadExtra(const RPU::state_t &extra, const std::string prefix, bool strict);

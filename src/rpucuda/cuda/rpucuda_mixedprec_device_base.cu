@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -100,7 +100,7 @@ MixedPrecRPUDeviceBaseCuda<T>::operator=(MixedPrecRPUDeviceBaseCuda<T> &&other) 
   SimpleRPUDeviceCuda<T>::operator=(std::move(other));
 
   rpucuda_device_ = std::move(other.rpucuda_device_);
-  rw_rng_ = std::move(rw_rng_);
+  rw_rng_ = std::move(other.rw_rng_);
 
   transfer_pwu_ = std::move(other.transfer_pwu_);
   noise_manager_x_ = std::move(other.noise_manager_x_);
@@ -116,8 +116,8 @@ MixedPrecRPUDeviceBaseCuda<T>::operator=(MixedPrecRPUDeviceBaseCuda<T> &&other) 
   dev_sparsity_x_ = std::move(other.dev_sparsity_x_);
   dev_avg_sparsity_ = std::move(other.dev_avg_sparsity_);
 
-  dev_transfer_tmp_ = std::move(dev_transfer_tmp_);
-  dev_transfer_d_vecs_ = std::move(dev_transfer_d_vecs_);
+  dev_transfer_tmp_ = std::move(other.dev_transfer_tmp_);
+  dev_transfer_d_vecs_ = std::move(other.dev_transfer_d_vecs_);
 
   io_ = other.io_;
   up_ptr_ = other.up_ptr_;
@@ -143,6 +143,23 @@ void MixedPrecRPUDeviceBaseCuda<T>::populateFrom(const AbstractRPUDevice<T> &rpu
 
   const auto &par = this->getPar();
   granularity_ = rpu_device.getGranularity();
+  this->context_->synchronize();
+}
+
+template <typename T>
+void MixedPrecRPUDeviceBaseCuda<T>::setDeviceParameterFrom(
+    const AbstractRPUDevice<T> &rpu_device_in, T *dev_weights) {
+
+  const auto &rpu_device = dynamic_cast<const MixedPrecRPUDeviceBase<T> &>(rpu_device_in);
+  if (&rpu_device == nullptr) {
+    RPU_FATAL("setDeviceParameterFrom expects MixedPrecRPUDeviceBase.");
+  }
+
+  SimpleRPUDeviceCuda<T>::setDeviceParameterFrom(rpu_device_in, dev_weights);
+
+  // as on CPU, only the parameters of the underlying device are set
+  // (chi and the update counters are kept)
+  rpucuda_device_->setDeviceParameterFrom(rpu_device.getRPUDevice(), dev_weights);
   this->context_->synchronize();
 }
 

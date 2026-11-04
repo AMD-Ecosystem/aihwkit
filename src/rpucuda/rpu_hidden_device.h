@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -98,7 +98,7 @@ template <typename T> class HiddenStepRPUDevice : public PulsedRPUDevice<T> {
       ,
       /* dp2vec body*/
       size_t n_prev = names.size();
-      size_t size = this->x_size_ * this->d_size_;
+      size_t size = static_cast<size_t>(this->x_size_) * static_cast<size_t>(this->d_size_);
 
       for (size_t i = 0; i < size; ++i) {
         data_ptrs[n_prev][i] = hs_scale_up_[0][i];
@@ -107,7 +107,7 @@ template <typename T> class HiddenStepRPUDevice : public PulsedRPUDevice<T> {
       },
       /* vec2dp body*/
       size_t n_prev = names.size();
-      size_t size = this->x_size_ * this->d_size_;
+      size_t size = static_cast<size_t>(this->x_size_) * static_cast<size_t>(this->d_size_);
 
       for (size_t i = 0; i < size; ++i) {
         hs_scale_up_[0][i] = data_ptrs[n_prev][i];

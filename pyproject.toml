@@ -1,6 +1,6 @@
 [build-system]
 requires = [
-  "setuptools",
+  "setuptools >= 77.0.0",
   "wheel",
   "scikit-build >= 0.18.1",
   "pybind11 >= 3.0.1",
@@ -12,14 +12,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aihwkit"
-version = "1.1.0"
+dynamic = ["version"]
 dependencies = [
   "cmake >= 4.2.1",
   "scikit-build >= 0.18.1",
   "scikit-learn",
   "pybind11 >= 3.0.1",
-  "torch == 2.13.0",
-  "torchvision == 0.28.0",
+  "torch",
+  "torchvision",
   "scipy",
   "requests >= 2.32, <3",
   "numpy",
@@ -27,13 +27,14 @@ dependencies = [
   "tqdm",
   "mypy",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 authors = [
   { name = "IBM Research", email = "aihwkit@us.ibm.com" },
 ]
 description = "IBM Analog Hardware Acceleration Kit"
 readme = "README.md"
-license = {file = "LICENSE.txt"}
+license = "MIT"
+license-files = ["LICENSE.txt"]
 keywords = [
   "ai",
   "analog",
@@ -71,6 +72,7 @@ dev = [
   "pylint",
   "pytest",
   "parameterized",
+  "datasets",
   "black",
 ]
 
@@ -92,5 +94,75 @@ Repository = "https://github.com/IBM/aihwkit.git"
 Issues = "https://github.com/IBM/aihwkit/issues"
 Changelog = "https://github.com/IBM/aihwkit/blob/master/CHANGELOG.md"
 
+[tool.setuptools.dynamic]
+version = {file = "src/aihwkit/VERSION.txt"}
+
 [tool.black]
 line-length = 100
+
+[tool.cibuildwheel]
+build = [
+  "cp312-manylinux_x86_64",
+  "cp313-manylinux_x86_64",
+  "cp314-manylinux_x86_64",
+  "cp312-macosx_arm64",
+  "cp313-macosx_arm64",
+  "cp314-macosx_arm64"
+]
+
+build-frontend = "pip; args: --no-build-isolation"
+
+before-build = '''
+pip install \
+    "cmake>=4.2.1" \
+    "scikit-build>=0.18.1" \
+    "pybind11>=3.0.1" \
+    "requests>=2.32,<3" \
+    scikit-learn \
+    scipy \
+    numpy \
+    protobuf \
+    tqdm \
+    mypy \
+    ninja
+pip install torch torchvision ${TORCH_INDEX_URL:+--index-url "$TORCH_INDEX_URL"}
+make clean
+'''
+
+container-engine = "docker"
+
+# before-test = "pip install -e '.[dev]'"
+# test-command = "pytest -v -s {project}/tests/"
+# test-requires = "pytest"
+
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+before-all = '''
+yum install -y openblas-devel yum-utils
+yum-config-manager --add-repo \
+    https://developer.download.nvidia.com/compute/cuda/repos/rhel8/x86_64/cuda-rhel8.repo
+CUDA_PKG_VERSION=$(echo "$CUDA_VERSION" | tr . -)
+yum install -y \
+    cuda-nvcc-${CUDA_PKG_VERSION} \
+    cuda-cudart-devel-${CUDA_PKG_VERSION} \
+    cuda-cccl-${CUDA_PKG_VERSION} \
+    cuda-nvrtc-devel-${CUDA_PKG_VERSION} \
+    cuda-nvtx-${CUDA_PKG_VERSION} \
+    cuda-driver-devel-${CUDA_PKG_VERSION} \
+    libcublas-devel-${CUDA_PKG_VERSION} \
+    libcurand-devel-${CUDA_PKG_VERSION} \
+    libcusparse-devel-${CUDA_PKG_VERSION} \
+    libcusolver-devel-${CUDA_PKG_VERSION}
+ln -sfn /usr/local/cuda-${CUDA_VERSION} /usr/local/cuda
+'''
+# Keep CUDA_VERSION, AIHWKIT_CUDA_VERSION and the cuXYZ suffix of TORCH_INDEX_URL in sync.
+environment = { CUDA_VERSION = "13.2", AIHWKIT_CUDA_VERSION = "132", CUDA_HOME = "/usr/local/cuda", CUDACXX = "/usr/local/cuda/bin/nvcc", USE_CUDA = "ON", TORCH_INDEX_URL = "https://download.pytorch.org/whl/cu132" }
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel} --exclude libtorch_python.so"
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+before-all = "brew install openblas"
+environment = { MACOSX_DEPLOYMENT_TARGET = "26.0", OpenBLAS_HOME = "/opt/homebrew/opt/openblas" }
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} --exclude libomp.dylib --exclude libtorch --exclude libc10"

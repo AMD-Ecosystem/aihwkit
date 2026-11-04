@@ -1,4 +1,4 @@
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -36,7 +36,7 @@ endif()
 
 install(TARGETS ${python_module_name} DESTINATION "src/aihwkit/simulator")
 
-add_custom_command(TARGET ${python_module_name}
+add_custom_command(TARGET ${python_module_name} POST_BUILD
   COMMAND stubgen --module "src/aihwkit/simulator" --output .
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
 )

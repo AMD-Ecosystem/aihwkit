@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -66,7 +66,10 @@ def parametrize_over_layers(layers: List, tiles: List, biases: List) -> Callable
         )
         digital_bias = bias == "digital"
         analog_bias = bias == "analog"
-        ret["get_rpu_config"] = partial(get_rpu_config, tile=tile, digital_bias=digital_bias)
+        # ``staticmethod``: since Python 3.14 ``partial`` binds ``self`` when used as a method.
+        ret["get_rpu_config"] = staticmethod(
+            partial(get_rpu_config, tile=tile, digital_bias=digital_bias)
+        )
         ret["bias"] = bias is not None
         ret["digital_bias"] = digital_bias
         ret["analog_bias"] = analog_bias

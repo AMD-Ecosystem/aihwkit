@@ -1,4 +1,4 @@
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -22,24 +22,15 @@ option(RPU_USE_FASTMOD "Use fast mod" OFF)
 option(RPU_USE_FASTRAND "Use fastrand" OFF)
 option(RPU_USE_TORCH_BUFFERS "Use torch buffers for RPUCuda" ON)
 
-
-# The C++ standard tracks the linked PyTorch headers; newer Torch releases
-# require C++20. Default stays 17 to match older Torch.
-set(RPU_CXX_STANDARD "17" CACHE STRING "C++ standard used for all RPU targets")
+# C++ standard used for every target (17 or 20). Leave empty to pick it up from
+# the installed torch headers (see cmake/dependencies.cmake): torch <= 2.13
+# builds with C++17, torch >= 2.14 requires C++20.
+set(RPU_CXX_STANDARD "" CACHE STRING "C++ standard (17, 20). Empty: detect from torch headers")
 
 set(RPU_BLAS "OpenBLAS" CACHE STRING "BLAS backend of choice (OpenBLAS, MKL)")
-set(RPU_CUDA_ARCHITECTURES "75;80;89" CACHE STRING "Target CUDA architectures")
+set(RPU_CUDA_ARCHITECTURES "75;80;89;120" CACHE STRING "Target CUDA architectures")
 # CMAKE_HIP_ARCHITECTURES is left to enable_language(HIP) to auto-detect the host
 # GPU when not set explicitly via -DCMAKE_HIP_ARCHITECTURES.
-
-# Internal variables.
-set(CUDA_TARGET_PROPERTIES POSITION_INDEPENDENT_CODE ON
-                           CUDA_RESOLVE_DEVICE_SYMBOLS ON
-                           CUDA_SEPARABLE_COMPILATION ON
-                           CXX_STANDARD ${RPU_CXX_STANDARD})
-set(HIP_TARGET_PROPERTIES POSITION_INDEPENDENT_CODE ON
-                          INTERPROCEDURAL_OPTIMIZATION OFF
-                          CXX_STANDARD ${RPU_CXX_STANDARD})
 
 # Append the virtualenv library path to cmake.
 if(DEFINED ENV{VIRTUAL_ENV})
@@ -53,6 +44,16 @@ include(cmake/dependencies.cmake)
 include(cmake/dependencies_cuda.cmake)
 include(cmake/dependencies_hip.cmake)
 include(cmake/dependencies_test.cmake)
+
+# Internal variables.
+set(CUDA_TARGET_PROPERTIES POSITION_INDEPENDENT_CODE ON
+                           CUDA_RESOLVE_DEVICE_SYMBOLS ON
+                           CUDA_SEPARABLE_COMPILATION ON
+                           CXX_STANDARD ${RPU_CXX_STANDARD}
+                           CUDA_STANDARD ${RPU_CXX_STANDARD})
+set(HIP_TARGET_PROPERTIES POSITION_INDEPENDENT_CODE ON
+                          INTERPROCEDURAL_OPTIMIZATION OFF
+                          CXX_STANDARD ${RPU_CXX_STANDARD})
 
 # Set compilation flags.
 if(WIN32)
@@ -237,7 +238,7 @@ if (BUILD_EXTENSION)
 
   install(TARGETS ${extension_module_name} DESTINATION "src/aihwkit/extension")
 
-  add_custom_command(TARGET ${extension_module_name}
+  add_custom_command(TARGET ${extension_module_name} POST_BUILD
     COMMAND stubgen --module "src/aihwkit/extension" --output .
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   )

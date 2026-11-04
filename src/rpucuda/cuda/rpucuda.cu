@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -184,7 +184,7 @@ template <typename T> RPUCudaSimple<T> &RPUCudaSimple<T>::operator=(RPUCudaSimpl
 
   dev_x_vector_ = std::move(other.dev_x_vector_);
   dev_d_vector_ = std::move(other.dev_d_vector_);
-  dev_x_vector_bias_ = std::move(dev_x_vector_bias_);
+  dev_x_vector_bias_ = std::move(other.dev_x_vector_bias_);
 
   dev_temp_tensor_ = std::move(other.dev_temp_tensor_);
 

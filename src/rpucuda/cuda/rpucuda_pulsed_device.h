@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -42,6 +42,17 @@ public:
     const auto &rpu_device = dynamic_cast<const PulsedRPUDeviceBase<T> &>(rpu_device_in);
     if (&rpu_device == nullptr) {
       RPU_FATAL("populateFrom expects PulsedRPUDeviceBase.");
+    }
+    setWeightGranularity(rpu_device.getWeightGranularity());
+    setNumStates(rpu_device.getNumStates());
+  };
+
+  void setDeviceParameterFrom(const AbstractRPUDevice<T> &rpu_device_in, T *dev_weights) override {
+    SimpleRPUDeviceCuda<T>::setDeviceParameterFrom(rpu_device_in, dev_weights);
+
+    const auto &rpu_device = dynamic_cast<const PulsedRPUDeviceBase<T> &>(rpu_device_in);
+    if (&rpu_device == nullptr) {
+      RPU_FATAL("setDeviceParameterFrom expects PulsedRPUDeviceBase.");
     }
     setWeightGranularity(rpu_device.getWeightGranularity());
     setNumStates(rpu_device.getNumStates());
@@ -169,6 +180,7 @@ public:
   void applyWeightUpdate(T *dev_weights, T *dw_and_current_weight_out) override;
   void
   populateFrom(const AbstractRPUDevice<T> &rpu_device) override; // need to be called by derived
+  void setDeviceParameterFrom(const AbstractRPUDevice<T> &rpu_device, T *dev_weights) override;
   PulsedRPUDeviceCuda<T> *clone() const override { RPU_FATAL("Needs implementations"); };
 
   PulsedRPUDeviceMetaParameter<T> &getPar() const override {
@@ -211,6 +223,7 @@ protected:
 
 private:
   void initialize();
+  void copyParametersFrom(const PulsedRPUDevice<T> &rpu_device);
 
   std::unique_ptr<CudaArray<param_t>> dev_4params_ = nullptr;
   std::unique_ptr<CudaArray<T>> dev_diffusion_rate_ = nullptr;
@@ -274,6 +287,19 @@ public:                                                                         
       RPU_FATAL("populateFrom expects " << #CPUCLASS << ".");                                      \
     }                                                                                              \
     PulsedRPUDeviceCuda<T>::populateFrom(rpu_device);                                              \
+    {                                                                                              \
+      HOST_COPY_BODY;                                                                              \
+    }                                                                                              \
+    this->context_->synchronize();                                                                 \
+  }                                                                                                \
+                                                                                                   \
+  void setDeviceParameterFrom(const AbstractRPUDevice<T> &rpu_device_in, T *dev_weights)           \
+      override {                                                                                   \
+    const auto &rpu_device = dynamic_cast<const CPUCLASS<T> &>(rpu_device_in);                     \
+    if (&rpu_device == nullptr) {                                                                  \
+      RPU_FATAL("setDeviceParameterFrom expects " << #CPUCLASS << ".");                            \
+    }                                                                                              \
+    PulsedRPUDeviceCuda<T>::setDeviceParameterFrom(rpu_device, dev_weights);                       \
     {                                                                                              \
       HOST_COPY_BODY;                                                                              \
     }                                                                                              \

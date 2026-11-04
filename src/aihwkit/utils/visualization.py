@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -582,7 +582,7 @@ def plot_device_compact(
     axis_left.set_xlim(0.0, limit)
     axis_right.set_xlim(0.0, limit)
 
-    return w_trace
+    return figure
 
 
 def plot_device_symmetry(

@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -151,6 +151,25 @@ void WeightDrifterCuda<T>::loadExtra(
   RPU::load(context_, state, "dev_nu", dev_nu_, strict);
   RPU::load(state, "current_t", current_t_, strict);
   RPU::load(state, "active", active_, strict);
+}
+
+template <typename T>
+void WeightDrifterCuda<T>::setNuFrom(const WeightDrifter<T> &wd, int x_size, int d_size) {
+
+  if (x_size * d_size != size_ || wd.getSize() != size_) {
+    RPU_FATAL("Size mismatch!");
+  }
+
+  if (wd.getNu() == nullptr) {
+    dev_nu_ = nullptr;
+    return;
+  }
+  if (dev_nu_ == nullptr) {
+    dev_nu_ = RPU::make_unique<CudaArray<T>>(context_, size_);
+    context_->synchronize();
+  }
+  dev_nu_->assignTranspose(wd.getNu(), d_size, x_size);
+  context_->synchronize();
 }
 
 template <typename T>

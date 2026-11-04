@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -130,6 +130,18 @@ _PLACEHOLDER_METADATA_FUNCTIONS = {
     "_is_zerotensor",
 }
 
+_PLACEHOLDER_LIKE_FACTORY_FUNCTIONS = {
+    # These factories copy tensor metadata only. They allocate new storage and
+    # never inspect or share the placeholder's meaningless backing values.
+    "empty_like",
+    "full_like",
+    "ones_like",
+    "rand_like",
+    "randint_like",
+    "randn_like",
+    "zeros_like",
+}
+
 
 def _raise_placeholder_read_error(func_name: str) -> None:
     """Raise the standard error for reads in placeholder mode."""
@@ -179,7 +191,10 @@ class PlaceholderDataView(Tensor):
 
             tree_map(block_out_target, kwargs["out"])
 
-        if func_name not in _PLACEHOLDER_METADATA_FUNCTIONS:
+        if (
+            func_name not in _PLACEHOLDER_METADATA_FUNCTIONS
+            and func_name not in _PLACEHOLDER_LIKE_FACTORY_FUNCTIONS
+        ):
             _raise_placeholder_read_error(func_name)
 
         if func_name == "detach":
