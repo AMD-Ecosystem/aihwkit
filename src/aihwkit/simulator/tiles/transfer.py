@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -319,9 +319,14 @@ class TransferSimulatorTile(SimulatorTile, Module):
         """Returns a brief info"""
         return self.__class__.__name__ + "({})".format(self.extra_repr())
 
-    def get_weights(self) -> Tensor:
-        """Returns the analog weights."""
+    def get_weights(self, as_ref: bool = False) -> Tensor:
+        """Returns the analog weights.
 
+        Args:
+            as_ref: if True, return a reference to the internal weight tensor.
+                If False (default), return a detached CPU copy.
+        """
+        # weight_tile.tile is a C++ tile that doesn't accept kwargs
         return self.weight_tile.tile.get_weights()
 
     def set_weights(self, weight: Tensor) -> None:

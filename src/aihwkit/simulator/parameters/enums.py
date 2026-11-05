@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -35,6 +35,24 @@ class RPUDataType(Enum):
     def as_torch(self) -> dtype:
         """Returns corresponding torch dtype."""
         return _TORCH_DATA_TYPE_MAP[self.value]
+
+
+class AnalogContextDataViewMode(Enum):
+    """Public data access mode for analog optimizer contexts."""
+
+    PLACEHOLDER = "placeholder"
+    """Expose tensor metadata only, without allowing direct weight reads."""
+
+    DATA_VIEW = "data_view"
+    """Expose a read-only logical weight view for diagnostics."""
+
+    BUFFER = "buffer"
+    """Expose an independent digital buffer with the logical weight shape.
+
+    This mode is useful for optimizers that need digital auxiliary state, such
+    as mixed-precision training or TT-v2. The buffer is not synchronized with
+    the analog tile weights.
+    """
 
 
 class BoundManagementType(Enum):

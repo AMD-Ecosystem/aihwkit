@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -165,6 +165,7 @@ public:
   void getWeightsReal(T *weightsptr) override;
   void setWeightsReal(const T *weightsptr, int n_loops = 25) override;
   void setWeights(const T *weightsptr) override;
+  void setWeightsCuda(const T *device_source) override;
 
   void applyWeightUpdate(T *dw_and_current_weights_out) override;
 

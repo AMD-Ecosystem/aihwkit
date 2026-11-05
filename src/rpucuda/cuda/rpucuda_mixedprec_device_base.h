@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -73,6 +73,7 @@ public:
   T getAvgSparsity() const;
 
   void populateFrom(const AbstractRPUDevice<T> &rpu_device) override;
+  void setDeviceParameterFrom(const AbstractRPUDevice<T> &rpu_device, T *dev_weights) override;
 
   MixedPrecRPUDeviceBaseMetaParameter<T> &getPar() const override {
     return static_cast<MixedPrecRPUDeviceBaseMetaParameter<T> &>(SimpleRPUDeviceCuda<T>::getPar());

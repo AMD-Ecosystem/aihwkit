@@ -8,13 +8,16 @@ on:
     branches:
     - master
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v3
 
@@ -26,10 +29,8 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get -qq update
-          sudo apt-get install -y ca-certificates libopenblas-dev gcc-9 g++-9
-          sudo update-alternatives \
-            --install /usr/bin/gcc gcc /usr/bin/gcc-9 60 \
-            --slave /usr/bin/g++ g++ /usr/bin/g++-9
+          sudo apt-get install -y ca-certificates libopenblas-dev build-essential
+          g++ --version
 
       - name: Build and install aihwkit wheel
         run: |
@@ -48,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v3
 
@@ -60,10 +61,8 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get -qq update
-          sudo apt-get install -y ca-certificates libopenblas-dev gcc-9 g++-9
-          sudo update-alternatives \
-            --install /usr/bin/gcc gcc /usr/bin/gcc-9 60 \
-            --slave /usr/bin/g++ g++ /usr/bin/g++-9
+          sudo apt-get install -y ca-certificates libopenblas-dev build-essential
+          g++ --version
 
       - name: Build and install aihwkit wheel
         run: |

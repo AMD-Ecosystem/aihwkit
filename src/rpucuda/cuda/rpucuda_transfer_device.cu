@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -186,7 +186,12 @@ T TransferRPUDeviceCuda<T>::getPulseCountLearningRate(
   const auto &par = getPar();
 
   if (par.fast_lr > (T)0.0) {
-    return par.fast_lr;
+    if (par.scale_fast_lr) {
+      // scale the fast LR with the SGD learning rate
+      return par.fast_lr * learning_rate;
+    } else {
+      return par.fast_lr;
+    }
   } else {
     return PulsedRPUDeviceCudaBase<T>::getPulseCountLearningRate(
         learning_rate, current_m_batch, up);

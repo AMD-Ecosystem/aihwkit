@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -133,8 +133,12 @@ class LinearLayerTest(ParametrizedTestCase):
         weight1, bias1 = layer1.get_weights()
         weight2, bias2 = layer2.get_weights()
 
+        if self.use_cuda:
+            weight1, weight2 = weight1.cpu(), weight2.cpu()
         assert_array_almost_equal(weight1, weight2)
         if bias1 is not None:
+            if self.use_cuda:
+                bias1, bias2 = bias1.cpu(), bias2.cpu()
             assert_array_almost_equal(bias1, bias2)
 
     def test_several_analog_layers(self):

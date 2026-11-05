@@ -1,18 +1,26 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
 """Some more tests for specific tiles."""
 
-from torch import ones, Tensor
+from unittest import SkipTest
+
+from numpy.testing import assert_array_equal
+from torch import arange, ones, zeros, zeros_like, Tensor
 from torch.nn.functional import mse_loss
 
 from aihwkit.simulator.configs.devices import SoftBoundsDevice
-from aihwkit.simulator.configs.compounds import TransferCompound, ReferenceUnitCell
+from aihwkit.simulator.configs.compounds import (
+    TransferCompound,
+    ChoppedTransferCompound,
+    ReferenceUnitCell,
+)
 
 from aihwkit.simulator.configs.configs import UnitCellRPUConfig
+from aihwkit.simulator.parameters import IOParameters
 from aihwkit.optim import AnalogSGD
 
 from .helpers.decorators import parametrize_over_layers
@@ -214,3 +222,351 @@ class TransferCompoundTest(ParametrizedTestCase):
             self.assertAlmostEqual(bias[0].item(), gamma * (a - b) + c - d, 5)
 
         self.assertAlmostEqual(weight[0][0].item(), gamma * (a - b) + c - d, 5)
+
+
+@parametrize_over_layers(
+    layers=[Linear, LinearCuda], tiles=[FloatingPoint], biases=["analog", "digital", None]
+)
+class ChoppedTransferCompoundTest(ParametrizedTestCase):
+    """Tests for non-zero ``gamma`` in the chopped transfer compound (PR #764).
+
+    The fast array ``A`` is updated with per-element chopper sign flips and is
+    therefore stored in *chopped* form
+    ``A_stored[i, j] = c_d[i] * c_x[j] * A_true[i, j]`` where the de-chopping
+    sign is ``+1`` if the input and output choppers agree and ``-1`` if they
+    differ (see ``ChoppedTransferRPUDevice::readAndUpdate``).  With
+    ``gamma != 0`` the fast array contributes directly to the visible weight
+    (residual learning), so the weight reduction must apply the de-chopping:
+
+        ``W = gamma * (c_d (x) c_x) * A_stored + C``
+
+    These tests pin down that reduction, including when the chopper state
+    changes.
+    """
+
+    @staticmethod
+    def get_chopped_transfer_compound(gamma, fast_lr=1.0, transfer_every=1.0, **device_kwargs):
+        """Get a chopped-transfer compound (fast ``A`` + slow ``C``)."""
+
+        def custom_device(**kwargs):
+            """Bound-free soft-bounds device."""
+            return SoftBoundsDevice(w_max_dtod=0.0, w_min_dtod=0.0, w_max=1.0, w_min=-1.0, **kwargs)
+
+        rpu_config = UnitCellRPUConfig(
+            device=ChoppedTransferCompound(
+                unit_cell_devices=[
+                    custom_device(**device_kwargs),  # fast "A" matrix
+                    custom_device(**device_kwargs),  # slow "C" matrix
+                ],
+                gamma=gamma,
+                fast_lr=fast_lr,
+                transfer_every=transfer_every,
+                # Keep the choppers static so the tests can set them explicitly.
+                in_chop_prob=0.0,
+                out_chop_prob=0.0,
+                transfer_forward=IOParameters(is_perfect=True),
+            )
+        )
+        return rpu_config
+
+    @staticmethod
+    def chopper_sign(in_chop, out_chop):
+        """De-chopping sign: ``+1`` if choppers agree, ``-1`` if they differ."""
+        return -1.0 if in_chop != out_chop else 1.0
+
+    @staticmethod
+    def set_choppers(analog_tile, in_chop, out_chop):
+        """Force the (static) input/output choppers to a known uniform state.
+
+        Choppers live in the device ``extra`` state rather than in the hidden
+        parameters, so they are round-tripped through ``dump_extra`` /
+        ``load_extra``. CUDA keeps separate signed chopper buffers; changing
+        the CPU device copy alone does not change the active GPU choppers.
+        """
+        state = analog_tile.tile.dump_extra()
+        for key in state:
+            if key.endswith("rpu_device.in_chopper"):
+                state[key] = [float(in_chop)] * len(state[key])
+            elif key.endswith("rpu_device.out_chopper"):
+                state[key] = [float(out_chop)] * len(state[key])
+            elif ".cwo.dev_x_chopper_buffer_" in key:
+                state[key] = [1.0 - 2.0 * in_chop] * analog_tile.tile.get_x_size()
+            elif ".cwo.dev_d_chopper_buffer_" in key:
+                state[key] = [1.0 - 2.0 * out_chop] * analog_tile.tile.get_d_size()
+        analog_tile.tile.load_extra(state, True)
+
+    def test_chopper_correction(self):
+        """Visible weight de-chops the fast array: ``W = gamma*sign*A + C``."""
+        # pylint: disable=invalid-name
+        gamma = 0.1
+        a, c = 0.4, 0.2
+        model = self.get_layer(
+            in_features=2, out_features=1, rpu_config=self.get_chopped_transfer_compound(gamma)
+        )
+
+        weight, bias = model.get_weights()
+        model.set_weights(weight * 0.0, bias * 0.0 if bias is not None else None)
+
+        analog_tile = next(model.analog_tiles())
+        params = analog_tile.get_hidden_parameters()
+        shape = params["hidden_weights_0"].shape
+        params["hidden_weights_0"] = a * ones(*shape)  # fast A
+        params["hidden_weights_1"] = c * ones(*shape)  # slow C
+
+        # Sweep every chopper combination, including the default identity state
+        # ``(0, 0)`` which must already yield the full ``gamma*A + C``.
+        for in_chop, out_chop in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]:
+            self.set_choppers(analog_tile, in_chop, out_chop)
+            # Re-apply the hidden weights to trigger a ``reduceToWeights`` with
+            # the current chopper state.
+            analog_tile.set_hidden_parameters(params)
+
+            weight, bias = model.get_weights()
+            expected = gamma * self.chopper_sign(in_chop, out_chop) * a + c
+            msg = f"in_chop={in_chop}, out_chop={out_chop}"
+
+            if self.digital_bias:
+                self.assertAlmostEqual(bias[0].item(), 0.0)
+            if self.bias and not self.digital_bias:
+                self.assertAlmostEqual(bias[0].item(), expected, 5, msg=msg)
+            self.assertAlmostEqual(weight[0][0].item(), expected, 5, msg=msg)
+
+    def test_decay(self):
+        """Decay applied to A and C is reflected in ``W = gamma*A + C``."""
+        # pylint: disable=invalid-name, too-many-locals
+
+        lifetime = 100.0  # initial setting (needs to be larger 1)
+        gamma = 0.1
+        reset_bias = 0.3  # decay shift
+        rpu_config = self.get_chopped_transfer_compound(
+            gamma=gamma,
+            fast_lr=0.0,  # no fast-array update (LR is zero anyway)
+            transfer_every=1.0e6,  # no transfer during the test, only decay
+            lifetime=lifetime,
+            lifetime_dtod=0.0,
+            reset=reset_bias,
+            reset_std=0.0,
+        )
+        model = self.get_layer(in_features=2, out_features=1, rpu_config=rpu_config)
+
+        weight, bias = model.get_weights()
+        model.set_weights(weight * 0.0, bias * 0.0 if bias is not None else None)
+
+        analog_tile = next(model.analog_tiles())
+        params = analog_tile.get_hidden_parameters()
+        shape = params["hidden_weights_0"].shape
+
+        # just dummy settings
+        a, c = 0.47, 0.64
+        params["hidden_weights_0"] = a * ones(*shape)  # A
+        params["hidden_weights_1"] = c * ones(*shape)  # C
+
+        # explicitly set the decay scales (which is 1-1/lifetime)
+        a_dcy, c_dcy = 0.95, 0.33
+        params["decay_scales_0"] = a_dcy * ones(*shape)  # A
+        params["decay_scales_1"] = c_dcy * ones(*shape)  # C
+
+        analog_tile.set_hidden_parameters(params)
+
+        x_b = Tensor([[0.1, 0.2], [0.2, 0.4]])
+        y_b = Tensor([[0.3], [0.6]])
+        if self.use_cuda:
+            x_b = x_b.cuda()
+            y_b = y_b.cuda()
+
+        # LR set to zero. Only lifetime will be applied
+        opt = AnalogSGD(model.parameters(), lr=0.0)
+
+        epochs = 2
+        for _ in range(epochs):
+            opt.zero_grad()
+            pred = model(x_b)
+            loss = mse_loss(pred, y_b)
+
+            loss.backward()
+            opt.step()
+
+        weight, bias = model.get_weights()
+
+        # reference values (choppers are identity -> de-chopping sign is +1)
+        a = (a - reset_bias) * pow(a_dcy, epochs) + reset_bias
+        c = (c - reset_bias) * pow(c_dcy, epochs) + reset_bias
+
+        if self.digital_bias:
+            self.assertAlmostEqual(bias[0].item(), 0.0)
+        if self.bias and not self.digital_bias:
+            self.assertAlmostEqual(bias[0].item(), gamma * a + c, 5)
+
+        self.assertAlmostEqual(weight[0][0].item(), gamma * a + c, 5)
+
+    def test_cuda_chopper_restore(self) -> None:
+        """Restored GPU choppers are used immediately, before another update."""
+        # pylint: disable=too-many-locals
+        if not self.use_cuda:
+            raise SkipTest("CUDA chopper buffers are specific to the CUDA device")
+
+        for warm in (False, True):
+            model = self.get_layer(
+                in_features=3,
+                out_features=2,
+                rpu_config=self.get_chopped_transfer_compound(0.1, transfer_every=1.0e6),
+            )
+            analog_tile = next(model.analog_tiles())
+            empty_state = analog_tile.tile.dump_extra()
+            if warm:
+                # Exercise replacing allocated buffers as well as loading them
+                # before their first allocation. No gradient or transfer occurs.
+                analog_tile.set_learning_rate(0.1)
+                analog_tile.update(ones(1, 3, device="cuda"), zeros(1, 2, device="cuda"))
+
+            params = analog_tile.get_hidden_parameters()
+            shape = params["hidden_weights_0"].shape
+            fast = arange(1, params["hidden_weights_0"].numel() + 1).reshape(shape) / 20.0
+            slow = 0.2 * ones(*shape)
+            params["hidden_weights_0"] = fast
+            params["hidden_weights_1"] = slow
+
+            for swapped in (False, True):
+                state = analog_tile.tile.dump_extra()
+                x_first = [1.0 if idx % 2 == 0 else -1.0 for idx in range(shape[1])]
+                x_second = [-value for value in x_first]
+                d_first, d_second = [1.0, 1.0], [1.0, -1.0]
+                buffers = {
+                    "dev_x_chopper_buffer_1": x_first,
+                    "dev_x_chopper_buffer_2": x_second,
+                    "dev_d_chopper_buffer_1": d_first,
+                    "dev_d_chopper_buffer_2": d_second,
+                    "swapped_choppers": [float(swapped)],
+                }
+                for key in state:
+                    if ".cwo." in key and key.rsplit(".", 1)[-1] in buffers:
+                        state[key] = buffers[key.rsplit(".", 1)[-1]]
+                analog_tile.tile.load_extra(state, True)
+                analog_tile.set_hidden_parameters(params)
+
+                x_sign = Tensor(x_second if swapped else x_first)
+                d_sign = Tensor(d_second if swapped else d_first)
+                expected = 0.1 * d_sign[:, None] * x_sign[None, :] * fast + slow
+                self.assertTensorAlmostEqual(analog_tile.tile.get_weights(), expected)
+
+            # Loading the original lazy state must also clear the cached pointers.
+            analog_tile.tile.load_extra(empty_state, True)
+            analog_tile.set_hidden_parameters(params)
+            self.assertTensorAlmostEqual(analog_tile.tile.get_weights(), 0.1 * fast + slow)
+
+    def test_decay_with_negative_reset_bias(self):
+        """Negative reset bias survives decay; a chopper flip then flips A."""
+        # pylint: disable=invalid-name, too-many-locals
+
+        lifetime = 100.0
+        gamma = 0.1
+        reset_bias = -0.3
+        rpu_config = self.get_chopped_transfer_compound(
+            gamma=gamma,
+            fast_lr=0.0,
+            transfer_every=1.0e6,
+            lifetime=lifetime,
+            lifetime_dtod=0.0,
+            reset=reset_bias,
+            reset_std=0.0,
+        )
+        model = self.get_layer(in_features=2, out_features=1, rpu_config=rpu_config)
+
+        weight, bias = model.get_weights()
+        model.set_weights(weight * 0.0, bias * 0.0 if bias is not None else None)
+
+        analog_tile = next(model.analog_tiles())
+        params = analog_tile.get_hidden_parameters()
+        shape = params["hidden_weights_0"].shape
+
+        a, c = 0.47, 0.64
+        params["hidden_weights_0"] = a * ones(*shape)
+        params["hidden_weights_1"] = c * ones(*shape)
+
+        a_dcy, c_dcy = 0.95, 0.33
+        params["decay_scales_0"] = a_dcy * ones(*shape)
+        params["decay_scales_1"] = c_dcy * ones(*shape)
+
+        analog_tile.set_hidden_parameters(params)
+
+        x_b = Tensor([[0.1, 0.2], [0.2, 0.4]])
+        y_b = Tensor([[0.3], [0.6]])
+        if self.use_cuda:
+            x_b = x_b.cuda()
+            y_b = y_b.cuda()
+
+        opt = AnalogSGD(model.parameters(), lr=0.0)
+
+        epochs = 2
+        for _ in range(epochs):
+            opt.zero_grad()
+            pred = model(x_b)
+            loss = mse_loss(pred, y_b)
+
+            loss.backward()
+            opt.step()
+
+        weight, bias = model.get_weights()
+
+        a = (a - reset_bias) * pow(a_dcy, epochs) + reset_bias
+        c = (c - reset_bias) * pow(c_dcy, epochs) + reset_bias
+
+        if self.digital_bias:
+            self.assertAlmostEqual(bias[0].item(), 0.0)
+        if self.bias and not self.digital_bias:
+            self.assertAlmostEqual(bias[0].item(), gamma * a + c, 5)
+
+        self.assertAlmostEqual(weight[0][0].item(), gamma * a + c, 5)
+
+        # Dynamically change the chopper: make the input and output choppers
+        # differ so the de-chopping sign flips to -1. The decayed A and C are
+        # unchanged, so only the sign of the gamma*A term flips.
+        params = analog_tile.get_hidden_parameters()  # current (decayed) A and C
+        self.set_choppers(analog_tile, 1.0, 0.0)
+        analog_tile.set_hidden_parameters(params)  # force reduce with new choppers
+
+        weight, bias = model.get_weights()
+        if self.bias and not self.digital_bias:
+            self.assertAlmostEqual(bias[0].item(), gamma * (-1.0) * a + c, 5)
+
+        self.assertAlmostEqual(weight[0][0].item(), gamma * (-1.0) * a + c, 5)
+
+    def test_set_hidden_parameters_keeps_extra_state(self):
+        """Setting hidden parameters must not reset the runtime state (issue #746)."""
+        rpu_config = self.get_chopped_transfer_compound(0.0, transfer_every=3.0)
+        rpu_config.device.in_chop_prob = 0.5
+        rpu_config.device.out_chop_prob = 0.5
+        model = self.get_layer(in_features=2, out_features=1, rpu_config=rpu_config)
+
+        x_b = Tensor([[0.1, 0.2], [0.2, 0.4]])
+        y_b = Tensor([[0.3], [0.6]])
+        if self.use_cuda:
+            x_b = x_b.cuda()
+            y_b = y_b.cuda()
+
+        # advance counters and chopper states (mid transfer period)
+        opt = AnalogSGD(model.parameters(), lr=0.1)
+        for _ in range(4):
+            opt.zero_grad()
+            loss = mse_loss(model(x_b), y_b)
+            loss.backward()
+            opt.step()
+
+        analog_tile = next(model.analog_tiles())
+        state_before = analog_tile.tile.dump_extra()
+
+        # reset the fast array only
+        params = analog_tile.get_hidden_parameters()
+        params["hidden_weights_0"] = zeros_like(params["hidden_weights_0"])
+        analog_tile.set_hidden_parameters(params)
+
+        new_params = analog_tile.get_hidden_parameters()
+        self.assertTensorAlmostEqual(new_params["hidden_weights_0"], params["hidden_weights_0"])
+        self.assertTensorAlmostEqual(new_params["hidden_weights_1"], params["hidden_weights_1"])
+
+        state_after = analog_tile.tile.dump_extra()
+        self.assertEqual(state_before.keys(), state_after.keys())
+        for key, value in state_before.items():
+            # Unused CUDA scratch buffers can contain NaNs. Finite values must
+            # match exactly, and NaNs must remain at the same positions.
+            assert_array_equal(value, state_after[key], err_msg=key)

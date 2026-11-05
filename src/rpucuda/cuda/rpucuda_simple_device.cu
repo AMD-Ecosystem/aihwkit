@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -163,10 +163,10 @@ SimpleRPUDeviceCuda<T> &SimpleRPUDeviceCuda<T>::operator=(SimpleRPUDeviceCuda<T>
   par_storage_ = std::move(other.par_storage_);
   wdrifter_cuda_ = std::move(other.wdrifter_cuda_);
 
-  dev_reset_nrnd_ = std::move(dev_reset_nrnd_);
-  dev_reset_flag_ = std::move(dev_reset_flag_);
-  rnd_context_ = std::move(rnd_context_);
-  dev_diffusion_nrnd_ = std::move(dev_diffusion_nrnd_);
+  dev_reset_nrnd_ = std::move(other.dev_reset_nrnd_);
+  dev_reset_flag_ = std::move(other.dev_reset_flag_);
+  rnd_context_ = std::move(other.rnd_context_);
+  dev_diffusion_nrnd_ = std::move(other.dev_diffusion_nrnd_);
 
   return *this;
 };
@@ -206,6 +206,34 @@ void SimpleRPUDeviceCuda<T>::populateFrom(const AbstractRPUDevice<T> &rpu_device
   if (rpu_device.hasWDrifter()) {
     wdrifter_cuda_ = RPU::make_unique<WeightDrifterCuda<T>>(
         this->context_, *rpu_device.getWDrifter(), x_size_, d_size_);
+  }
+
+  context_->synchronize();
+}
+
+template <typename T>
+void SimpleRPUDeviceCuda<T>::setDeviceParameterFrom(
+    const AbstractRPUDevice<T> &rpu_device_in, T *dev_weights) {
+  UNUSED(dev_weights);
+
+  const auto &rpu_device = dynamic_cast<const SimpleRPUDevice<T> &>(rpu_device_in);
+  if (&rpu_device == nullptr) {
+    RPU_FATAL("setDeviceParameterFrom expects SimpleRPUDevice.");
+  }
+  if (rpu_device.getXSize() != x_size_ || rpu_device.getDSize() != d_size_) {
+    RPU_FATAL("Size mismatch in setDeviceParameterFrom.");
+  }
+
+  // meta parameter might have been adjusted (e.g. dw_min)
+  par_storage_ = rpu_device_in.getPar().cloneUnique();
+
+  if (rpu_device.hasWDrifter()) {
+    if (wdrifter_cuda_) {
+      wdrifter_cuda_->setNuFrom(*rpu_device.getWDrifter(), x_size_, d_size_);
+    } else {
+      wdrifter_cuda_ = RPU::make_unique<WeightDrifterCuda<T>>(
+          this->context_, *rpu_device.getWDrifter(), x_size_, d_size_);
+    }
   }
 
   context_->synchronize();

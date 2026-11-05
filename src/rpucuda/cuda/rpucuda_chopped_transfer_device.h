@@ -1,5 +1,5 @@
 /**
- * (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+ * (C) Copyright 2026 IBM. All Rights Reserved.
  *
  * Licensed under the MIT license. See LICENSE file in the project root for details.
  */
@@ -98,6 +98,7 @@ public:
   void loadExtra(const RPU::state_t &extra, const std::string prefix, bool strict) override;
 
 protected:
+  void reduceToWeights(CudaContextPtr c, T *dev_weights) override;
   int getTransferEvery(
       int didx, int m_batch, const PulsedUpdateMetaParameter<T> &up) const override;
   T getPulseCountLearningRate(

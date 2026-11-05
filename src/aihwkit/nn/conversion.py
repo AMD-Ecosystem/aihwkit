@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# (C) Copyright 2020, 2021, 2022, 2023, 2024 IBM. All Rights Reserved.
+# (C) Copyright 2026 IBM. All Rights Reserved.
 #
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 
@@ -137,6 +137,7 @@ def convert_to_analog(
         inplace: Whether to perform in-place conversion (without deepcopy)
 
         verbose: Increase verbosity. Will print converted layers.
+
 
     Returns:
         Module where all the digital layers are replaced with analog
